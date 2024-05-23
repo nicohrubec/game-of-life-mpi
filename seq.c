@@ -38,26 +38,30 @@ void fill_matrix(uint8_t(*matrix), int n_rows, int n_cols, int density) {
     }
 }
 
-uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n_rows, int n_cols) {
-    int ni = i % n_rows;
-    int nj = (j + n_cols) % n_cols;
-    int offset = ni * n_cols + nj;
+uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n_cols) {
+    return matrix[i * n_cols + j];
+}
 
-    return matrix[offset];
+int stencil_plus_operator(int x, int d, int m) {
+    return (x + d) % m; // todo: replace %
+}
+
+int stencil_minus_operator(int x, int d, int m) {
+    return (x - d + m) % m; // todo: replace %
 }
 
 // applies stencil
 uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n_rows, int n_cols) {
     uint8_t num_alive_cells = 0;
 
-    num_alive_cells += get_neighbor_value(matrix, i-2, j-2, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i, j-2, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i+2, j-2, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i-1, j, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i+2, j, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i-1, j+1, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i, j+1, n_rows, n_cols);
-    num_alive_cells += get_neighbor_value(matrix, i+2, j+2, n_rows, n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 2, n_rows), stencil_minus_operator(j, 2, n_cols), n_cols);
+    num_alive_cells += get_neighbor_value(matrix, i, stencil_minus_operator(j, 2, n_cols), n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n_rows), stencil_minus_operator(j, 2, n_cols), n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n_rows), j, n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n_rows), j, n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n_rows), stencil_plus_operator(j, 1, n_cols), n_cols);
+    num_alive_cells += get_neighbor_value(matrix, i, stencil_plus_operator(j, 1, n_cols), n_cols);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n_rows), stencil_plus_operator(j, 2, n_cols), n_cols);
 
     return num_alive_cells;
 }
