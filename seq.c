@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <mpi.h>
 
 // prints a matrix for debugging
 void print_matrix(uint8_t(*matrix), int n_rows, int n_cols) {
@@ -116,6 +117,8 @@ int main(int argc, char *argv[]) {
     int verbose = 0;
     int density = 27; // in percent
     int opt;
+    int rank, size;
+    double total_time = 0.0, total_time_generation, start_time, end_time;
 
     // define arguments
     static struct option long_options[] = {{"num_rows", required_argument, 0, 'r'},
@@ -125,6 +128,8 @@ int main(int argc, char *argv[]) {
                                            {"density", required_argument, 0, 'd'},
                                            {"verbose", no_argument, 0, 'v'},
                                            {0, 0, 0, 0}};
+
+    MPI_Init(&argc, &argv);
 
     // argument parsing
     while (1) {
@@ -164,6 +169,14 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (verbose) {
+        printf("World rank is %d\n", rank);
+        printf("World size is %d\n", size);
+    }
+
     srand(seed); // guarantee reproducible results
 
     if (verbose) {
@@ -182,27 +195,36 @@ int main(int argc, char *argv[]) {
     // generate initial input
     fill_matrix(current_generation, n_rows, n_cols, density);
 
+    if (verbose) {
+        print_summary_output(current_generation, n_rows, n_cols, 0);
+        print_matrix(current_generation, n_rows, n_cols);
+    }
+
     // run gol
-    for (int c_generation = 0; c_generation < n_generations; c_generation++) {
+    for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
+        start_time = MPI_Wtime();
+        run_generation(current_generation, next_generation, n_rows, n_cols);
+        copy_matrix(current_generation, next_generation, n_rows, n_cols);
+        end_time = MPI_Wtime();
+
+        total_time_generation = (end_time - start_time) * 1e6; // μs
+        total_time += total_time_generation;
+
         if (verbose) {
             print_summary_output(current_generation, n_rows, n_cols, c_generation);
             print_matrix(current_generation, n_rows, n_cols);
+            printf("Time needed for generation: %f\n", total_time_generation);
         }
-
-        // todo: get timings
-        run_generation(current_generation, next_generation, n_rows, n_cols);
-        copy_matrix(current_generation, next_generation, n_rows, n_cols);
     }
 
-    // final output
-    print_summary_output(next_generation, n_rows, n_cols, n_generations);
-    if (verbose) {
-        print_matrix(current_generation, n_rows, n_cols);
-    }
+    printf("Total time: %f\n", total_time);
+    printf("Average time/generation: %f\n", total_time / n_generations);
 
     // resource clean up
     free(current_generation);
     free(next_generation);
+
+    MPI_Finalize();
 
     return 0;
 }
