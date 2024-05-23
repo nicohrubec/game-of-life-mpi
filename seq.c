@@ -43,12 +43,16 @@ uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n_cols) {
     return matrix[i * n_cols + j];
 }
 
+int modulo(int x, int y) {
+    return x - (y * (x / y));
+}
+
 int stencil_plus_operator(int x, int d, int m) {
-    return (x + d) % m; // todo: replace %
+    return modulo(x+d, m);
 }
 
 int stencil_minus_operator(int x, int d, int m) {
-    return (x - d + m) % m; // todo: replace %
+    return modulo(x-d+m, m);
 }
 
 // applies stencil
