@@ -4,13 +4,17 @@
 #include <stdint.h>
 #include <mpi.h>
 
+int get_offset(int i, int j, int n_cols) {
+    return i * n_cols + j;
+}
+
 // prints a matrix for debugging
 void print_matrix(uint8_t(*matrix), int n_rows, int n_cols) {
     int offset;
 
     for (int i = 0; i < n_rows; i++) {
         for (int j = 0; j < n_cols; j++) {
-            offset = i * n_cols + j;
+            offset = get_offset(i, j, n_cols);
             printf("%d ", matrix[offset]);
         }
         printf("\n");
@@ -25,7 +29,7 @@ void fill_matrix(uint8_t(*matrix), int n_rows, int n_cols, int density) {
 
     for(int i = 0; i < n_rows; i++) {
         for (int j = 0; j < n_cols; j++) {
-            offset = i * n_cols + j;
+            offset = get_offset(i, j, n_cols);
             r = rand() % 100;
 
             if (r < density) {
@@ -40,7 +44,7 @@ void fill_matrix(uint8_t(*matrix), int n_rows, int n_cols, int density) {
 }
 
 uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n_cols) {
-    return matrix[i * n_cols + j];
+    return matrix[get_offset(i, j, n_cols)];
 }
 
 int modulo(int x, int y) {
@@ -84,7 +88,7 @@ void run_generation(uint8_t(*current_generation), uint8_t(*next_generation), int
 
     for (int i = 0; i < n_rows; i++) {
         for (int j = 0; j < n_cols; j++) {
-            offset = i * n_cols + j;
+            offset = get_offset(i, j, n_cols);;
             cell_state = current_generation[offset];
             num_alive_neighbors = get_num_alive_cells_in_neighborhood(current_generation, i, j, n_rows, n_cols);
             new_cell_state = state_lookup[cell_state][num_alive_neighbors];
@@ -112,8 +116,6 @@ void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n_rows, int n_cols) {
         matrix1[i] = matrix2[i];
     }
 }
-
-
 
 int main(int argc, char *argv[]) {
     int n_rows = 10, n_cols = 10, n_generations = 2; // num rows, num cols, num generations
