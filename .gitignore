@@ -1,4 +1,5 @@
 .idea
 seq
 mpi_rand
+par
 hpc_project.pdf
