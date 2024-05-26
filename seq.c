@@ -121,7 +121,7 @@ int main(int argc, char *argv[]) {
     int n = 10, n_generations = 2; // num rows, num cols, num generations
     int seed = 42;
     int verbose = 0;
-    int density = 27; // in percent
+    int density = 28; // in percent
     int opt;
     int rank, size;
     double total_time = 0.0, total_time_generation, start_time, end_time;

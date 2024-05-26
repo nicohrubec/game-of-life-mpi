@@ -164,7 +164,7 @@ int main(int argc, char *argv[]) {
     int verbose = 0;
     int verify = 0; // if set we perform verification with the sequential version
     int weak_scaling = 0; // if set input size is per processor
-    int density = 27; // in percent
+    int density = 28; // in percent
     int opt;
     int rank, size;
 
