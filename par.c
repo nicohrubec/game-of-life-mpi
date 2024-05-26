@@ -117,6 +117,13 @@ void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
     }
 }
 
+int compare_matrices(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
+    for (int i = 0; i < n * n; i++) {
+        if (matrix1[i] != matrix2[i]) return 0;
+    }
+    return 1;
+}
+
 void fill_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix)[n_loc_c], int n, int density, int m_offset_r, int m_offset_c) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
@@ -293,10 +300,12 @@ int main(int argc, char *argv[]) {
     // allocate matrices for sequential verification
     uint8_t *current_generation_seq = NULL;
     uint8_t *next_generation_seq = NULL;
+    uint8_t *current_generation_par_global = NULL;
 
     if (rank == 0 && verify) {
         current_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
         next_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
+        current_generation_par_global = (uint8_t *)malloc(n * n * sizeof(uint8_t));
     }
 
     // get offset of local matrix in global matrix
@@ -309,17 +318,18 @@ int main(int argc, char *argv[]) {
     // fill local matrix with initial input
     fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
 
-    if (rank == 0 && verify) {
-        fill_matrix(current_generation_seq, n, density);
-    }
+    // gather all local submatrices into the global matrix on rank 0
+    MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
+               current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
+               0, MPI_COMM_WORLD);
 
-    if(verbose) {
-        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
+    if (verify && rank == 0) {
+        copy_matrix(current_generation_seq, current_generation_par_global, n);
     }
 
     if (verify && rank == 0 && verbose) {
-        printf("Sequential matrix: \n");
-        print_matrix(current_generation_seq, n);
+        printf("Input matrix: \n");
+        print_matrix(current_generation_par_global, n);
     }
 
     // run gol
@@ -327,17 +337,34 @@ int main(int argc, char *argv[]) {
         // todo: run generation for parallel
         // todo: copy next generation to current generation
 
-        if(verbose) {
-            print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
-        }
-
         // verification
-        if (rank == 0 && verify) {
-            run_generation(current_generation_seq, next_generation_seq, n);
-            copy_matrix(current_generation_seq, next_generation_seq, n);
+        if (verify) {
+            if (rank == 0) {
+                run_generation(current_generation_seq, next_generation_seq, n);
+                copy_matrix(current_generation_seq, next_generation_seq, n);
+            }
 
-            printf("Sequential matrix after generation %d: \n", c_generation);
-            print_matrix(current_generation_seq, n);
+            // todo: gather must be called by all processes, else deadlock because implicit barrier
+            MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
+                       current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
+                       0, MPI_COMM_WORLD);
+
+            if (rank == 0) {
+                int verification_result = compare_matrices(current_generation_seq, current_generation_par_global, n);
+
+                if (verification_result) {
+                    printf("Verification after generation %d was successful\n", c_generation);
+                } else {
+                    printf("Verification after generation %d failed\n", c_generation);
+                }
+
+                if (verbose) {
+                    printf("Sequential matrix after generation %d: \n", c_generation);
+                    print_matrix(current_generation_seq, n);
+                    printf("Parallel matrix after generation %d: \n", c_generation);
+                    print_matrix(current_generation_par_global, n);
+                }
+            }
         }
 
         // todo: output
@@ -349,6 +376,7 @@ int main(int argc, char *argv[]) {
     if (rank == 0 && verify) {
         free(current_generation_seq);
         free(next_generation_seq);
+        free(current_generation_par_global);
     }
 
     MPI_Finalize();
