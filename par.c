@@ -331,9 +331,11 @@ int main(int argc, char *argv[]) {
     fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
 
     // gather all local submatrices into the global matrix on rank 0
-    MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
-               current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
-               0, MPI_COMM_WORLD);
+    if (verify) {
+        MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
+                   current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
+                   0, MPI_COMM_WORLD);
+    }
 
     if (verify && rank == 0) {
         copy_matrix(current_generation_seq, current_generation_par_global, n);
@@ -356,7 +358,6 @@ int main(int argc, char *argv[]) {
                 copy_matrix(current_generation_seq, next_generation_seq, n);
             }
 
-            // todo: gather must be called by all processes, else deadlock because implicit barrier
             MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
                        current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
                        0, MPI_COMM_WORLD);
