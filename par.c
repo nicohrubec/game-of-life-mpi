@@ -158,6 +158,18 @@ void print_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix)[n_loc_c], int r
     }
 }
 
+void copy_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix1)[n_loc_c], uint8_t(*matrix2)[n_loc_c], int rank, int size) {
+    for (int i = 0; i < size; i++) {
+        if (rank == i) {
+            for (int i = 0; i < n_loc_r; i++) {
+                for (int j = 0; j < n_loc_c; j++) {
+                    matrix1[i][j] = matrix2[i][j];
+                }
+            }
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
     int n = 10, n_generations = 2; // num rows, num cols, num generations
     int seed = 42;
@@ -335,7 +347,7 @@ int main(int argc, char *argv[]) {
     // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
         // todo: run generation for parallel
-        // todo: copy next generation to current generation
+        // copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
 
         // verification
         if (verify) {
