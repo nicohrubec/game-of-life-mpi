@@ -4,8 +4,155 @@
 #include <stdint.h>
 #include <mpi.h>
 
+int get_offset(int i, int j, int n) {
+    return i * n + j;
+}
+
+// prints a matrix for debugging
+void print_matrix(uint8_t(*matrix), int n) {
+    int offset;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            offset = get_offset(i, j, n);
+            printf("%d ", matrix[offset]);
+        }
+        printf("\n");
+    }
+    fflush(stdout);
+}
+
+// fills a matrix with an initial input
+// percentage of alive cells can be configured with the density
+void fill_matrix(uint8_t(*matrix), int n, int density) {
+    int offset, r;
+
+    for(int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            offset = get_offset(i, j, n);
+            r = rand() % 100;
+
+            if (r < density) {
+                r = 1;
+            } else {
+                r = 0;
+            }
+
+            matrix[offset] = r;
+        }
+    }
+}
+
+uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n) {
+    return matrix[get_offset(i, j, n)];
+}
+
+int modulo(int x, int y) {
+    return x - (y * (x / y));
+}
+
+int stencil_plus_operator(int x, int d, int m) {
+    return modulo(x+d, m);
+}
+
+int stencil_minus_operator(int x, int d, int m) {
+    return modulo(x-d+m, m);
+}
+
+// applies stencil
+uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n) {
+    uint8_t num_alive_cells = 0;
+
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
+    num_alive_cells += get_neighbor_value(matrix, i, stencil_minus_operator(j, 2, n), n);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), j, n);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), j, n);
+    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), stencil_plus_operator(j, 1, n), n);
+    num_alive_cells += get_neighbor_value(matrix, i, stencil_plus_operator(j, 1, n), n);
+    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_plus_operator(j, 2, n), n);
+
+    return num_alive_cells;
+}
+
+uint8_t state_lookup[2][9] = {
+        { 0, 0, 0, 1, 0, 0, 0, 0, 0 },
+        { 0, 0, 1, 1, 0, 0, 0, 0, 0 }
+};
+
+// runs the gol for one iteration
+void run_generation(uint8_t(*current_generation), uint8_t(*next_generation), int n) {
+    int offset, num_alive_neighbors;
+    uint8_t new_cell_state;
+    uint8_t cell_state;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            offset = get_offset(i, j, n);;
+            cell_state = current_generation[offset];
+            num_alive_neighbors = get_num_alive_cells_in_neighborhood(current_generation, i, j, n);
+            new_cell_state = state_lookup[cell_state][num_alive_neighbors];
+            next_generation[offset] = new_cell_state;
+        }
+    }
+}
+
+// prints the number of dead and alive cells
+void print_summary_output(uint8_t(*matrix), int n, int c_generation) {
+    int num_alive_cells = 0;
+
+    for (int i = 0; i < n * n; i++) {
+        num_alive_cells += matrix[i];
+    }
+
+    printf("\n\nOutput after generation %d:\n", c_generation);
+    printf("Number of alive cells: %d\n", num_alive_cells);
+    printf("Number of dead cells: %d\n", n * n - num_alive_cells);
+}
+
+// copies the values from matrix 2 to matrix 1
+void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
+    for (int i = 0; i < n * n; i++) {
+        matrix1[i] = matrix2[i];
+    }
+}
+
+void fill_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix)[n_loc_c], int n, int density, int m_offset_r, int m_offset_c) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            int r = rand() % 100;
+            if( r < density) {
+                r = 1;
+            } else {
+                r = 0;
+            }
+
+            if(i >= m_offset_r && i < m_offset_r + n_loc_r &&
+               j >= m_offset_c && j < m_offset_c + n_loc_c) {
+                matrix[i - m_offset_r][j - m_offset_c] = r;
+            }
+        }
+    }
+}
+
+void print_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix)[n_loc_c], int rank, int size, int c_generation) {
+    for (int i = 0; i < size; i++) {
+        if (rank == i) {
+            printf("%d: local matrix at generation %d\n", rank, c_generation);
+            for (int i = 0; i < n_loc_r; i++) {
+                for (int j = 0; j < n_loc_c; j++) {
+                    printf("%d ", matrix[i][j]);
+                }
+                printf("\n");
+            }
+        }
+        fflush(stdout);
+        MPI_Barrier(MPI_COMM_WORLD);
+    }
+}
+
 int main(int argc, char *argv[]) {
-    int n_rows = 10, n_cols = 10, n_generations = 2; // num rows, num cols, num generations
+    int n = 10, n_generations = 2; // num rows, num cols, num generations
     int seed = 42;
     int verbose = 0;
     int verify = 0; // if set we perform verification with the sequential version
@@ -13,6 +160,17 @@ int main(int argc, char *argv[]) {
     int density = 27; // in percent
     int opt;
     int rank, size;
+
+    int n_loc_r, n_loc_c;
+    int nprows, npcols;
+    int prow_idx, pcol_idx;
+
+    // cartesian communicator
+    int dims[2] = {0, 0}; // set to 0 to dynamically set dimensions based on number of processes
+    int pers[2] = {0, 0}; // grid is not periodic
+    int coords[2]; // coordinates of current process in the grid
+    MPI_Comm cartcomm;
+    MPI_Comm cartcomm_reorder;
 
     // define arguments
     static struct option long_options[] = {{"num_rows", required_argument, 0, 'r'},
@@ -30,16 +188,13 @@ int main(int argc, char *argv[]) {
     // argument parsing
     while (1) {
         int option_index = 0;
-        opt = getopt_long(argc, argv, "r:c:g:s:d:vxw", long_options, &option_index);
+        opt = getopt_long(argc, argv, "n:g:s:d:vxw", long_options, &option_index);
 
         if (opt == -1) break;
 
         switch (opt) {
-            case 'r':
-                n_rows = atoi(optarg);
-                break;
-            case 'c':
-                n_cols = atoi(optarg);
+            case 'n':
+                n = atoi(optarg);
                 break;
             case 'g':
                 n_generations = atoi(optarg);
@@ -60,7 +215,7 @@ int main(int argc, char *argv[]) {
                 weak_scaling = 1;
                 break;
             default:
-                fprintf(stderr, "Usage: %s -r <r> -c <c> -g <g> -s <s> -v -x\n", argv[0]);
+                fprintf(stderr, "Usage: %s -n <n> -g <g> -s <s> -v -x\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
@@ -74,37 +229,127 @@ int main(int argc, char *argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    if (verbose) {
-        printf("World rank is %d\n", rank);
-        printf("World size is %d\n", size);
-    }
-
     srand(seed); // guarantee reproducible results
+    MPI_Dims_create(size, 2, dims); // get dimensions of process grid
 
-    if (verbose) {
+    if (verbose && rank == 0) {
         printf("Parameters:\n");
         printf("seed: %d\n", seed);
-        printf("n_rows: %d\n", n_rows);
-        printf("n_cols: %d\n", n_cols);
+        printf("number: %d\n", n);
         printf("n_generations: %d\n", n_generations);
         printf("density: %d \n", density);
+        printf("Dimensions created: [%d, %d]\n", dims[0], dims[1]);
 
         if (verify) printf("verification is on\n");
         if (weak_scaling) printf("weak scaling is on\n");
     }
 
-    // set up the communicator
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, pers, 0, &cartcomm); // create process grid without reordering
+    MPI_Cart_create(MPI_COMM_WORLD, 2, dims, pers, 1, &cartcomm_reorder); // process grid with reordering
 
-    // generate input already distributed on different processors
-    // then two step process:
-    // 1. communication
-    // 2. local stencil update
+    // check if process reordering happened
+    int result;
+    MPI_Comm_compare(cartcomm, cartcomm_reorder, &result);
+    if (verbose && rank == 0) {
+        if (result == MPI_IDENT || result == MPI_CONGRUENT) {
+            printf("No process reordering took place!\n");
+        } else {
+            printf("Processes were reordered!\n");
+        }
+    }
 
-    // how to compare with sequential version?
-    // no idea currently, shared memory?
+    MPI_Cart_coords(cartcomm, rank, 2, coords); // get process coordinates in created grid
 
-    // how to distribute the input (submatrices or subvectors)?
-    // only submatrices make sense probably because otherwise communication cost is a lot
+    prow_idx = coords[0];
+    pcol_idx = coords[1];
+
+    nprows = dims[0];
+    npcols = dims[1];
+
+    if (verbose) {
+        printf("Process coordinates for rank %d: [%d, %d]\n", rank, prow_idx, pcol_idx);
+    }
+
+    if( n % nprows != 0 || n % npcols != 0) {
+        if( rank == 0 ) {
+            fprintf(stderr, "n should be divisible by nprows and npcols\n");
+        }
+        exit(EXIT_FAILURE);
+    }
+
+    // local matrix size
+    n_loc_r = n / nprows;
+    n_loc_c = n / npcols;
+    if (verbose && rank == 0) {
+        printf("n_loc_r: %d n_loc_c: %d\n", n_loc_r, n_loc_c);
+    }
+
+    // allocate local matrices for parallel computation
+    uint8_t(*current_generation_loc)[n_loc_c];
+    current_generation_loc = (uint8_t(*)[n_loc_c])malloc(n_loc_r * n_loc_c * sizeof(uint8_t));
+    uint8_t(*next_generation_loc)[n_loc_c];
+    next_generation_loc = (uint8_t(*)[n_loc_c])malloc(n_loc_r * n_loc_c * sizeof(uint8_t));
+
+    // allocate matrices for sequential verification
+    uint8_t *current_generation_seq = NULL;
+    uint8_t *next_generation_seq = NULL;
+
+    if (rank == 0 && verify) {
+        current_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
+        next_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
+    }
+
+    // get offset of local matrix in global matrix
+    int m_offset_r = prow_idx * n_loc_r;
+    int m_offset_c = pcol_idx * n_loc_c;
+    if( verbose ) {
+        printf("%d: prow_idx: %d pcol_idx: %d m_offset_r: %d m_offset_c: %d\n", rank, prow_idx, pcol_idx, m_offset_r, m_offset_c);
+    }
+
+    // fill local matrix with initial input
+    fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
+
+    if (rank == 0 && verify) {
+        fill_matrix(current_generation_seq, n, density);
+    }
+
+    if(verbose) {
+        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
+    }
+
+    if (verify && rank == 0 && verbose) {
+        printf("Sequential matrix: \n");
+        print_matrix(current_generation_seq, n);
+    }
+
+    // run gol
+    for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
+        // todo: run generation for parallel
+        // todo: copy next generation to current generation
+
+        if(verbose) {
+            print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
+        }
+
+        // verification
+        if (rank == 0 && verify) {
+            run_generation(current_generation_seq, next_generation_seq, n);
+            copy_matrix(current_generation_seq, next_generation_seq, n);
+
+            printf("Sequential matrix after generation %d: \n", c_generation);
+            print_matrix(current_generation_seq, n);
+        }
+
+        // todo: output
+    }
+
+    free(current_generation_loc);
+    free(next_generation_loc);
+
+    if (rank == 0 && verify) {
+        free(current_generation_seq);
+        free(next_generation_seq);
+    }
 
     MPI_Finalize();
 
