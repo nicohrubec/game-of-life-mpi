@@ -171,8 +171,32 @@ void copy_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix1)[n_loc_c], uint8
     }
 }
 
-/*
-void run_generation_par(uint8_t(*current_generation)[n_loc_c], uint8_t(*next_generation)[n_loc_c], int n_loc_r, int n_loc_c) {
+uint8_t get_num_alive_cells_in_par_neighborhood(int n_loc_c, uint8_t(*matrix)[n_loc_c], int i, int j, int rank) {
+    uint8_t num_alive_cells = 0;
+
+    num_alive_cells += matrix[i-2][j-2];
+    if (rank == 0) printf("i - 2, j - 2: %d\n", matrix[i-2][j-2]);
+    num_alive_cells += matrix[i][j-2];
+    if (rank == 0) printf("i, j - 2: %d\n", matrix[i][j-2]);
+    num_alive_cells += matrix[i+2][j-2];
+    if (rank == 0) printf("i + 2, j - 2: %d\n", matrix[i+2][j-2]);
+    num_alive_cells += matrix[i-1][j];
+    if (rank == 0) printf("i - 1, j: %d\n", matrix[i-1][j]);
+    num_alive_cells += matrix[i+2][j];
+    if (rank == 0) printf("i + 2, j: %d\n", matrix[i+2][j]);
+    num_alive_cells += matrix[i-1][j+1];
+    if (rank == 0) printf("i - 1, j + 1: %d\n", matrix[i-1][j+1]);
+    num_alive_cells += matrix[i][j+1];
+    if (rank == 0) printf("i, j + 1: %d\n", matrix[i][j+1]);
+    num_alive_cells += matrix[i+2][j+2];
+    if (rank == 0) printf("i + 2, j + 2: %d\n", matrix[i+2][j+2]);
+
+    if (rank == 0) printf("i: %d, j: %d, num alive cells: %d\n", i-2, j-2, num_alive_cells);
+    if (rank == 0) printf("local matrix at i: %d, j: %d is %d\n", i-2, j-2, matrix[i][j]);
+    return num_alive_cells;
+}
+
+void run_generation_par(int n_loc_r, int n_loc_c, uint8_t(*current_generation)[n_loc_c+4], uint8_t(*next_generation)[n_loc_c], int rank) {
     int num_alive_neighbors;
     uint8_t new_cell_state;
     uint8_t cell_state;
@@ -180,13 +204,12 @@ void run_generation_par(uint8_t(*current_generation)[n_loc_c], uint8_t(*next_gen
     for (int i = 0; i < n_loc_r; i++) {
         for (int j = 0; j < n_loc_c; j++) {
             cell_state = current_generation[i+2][j+2];
-            num_alive_neighbors = get_num_alive_cells_in_neighborhood(current_generation, i+2, j+2, n);
+            num_alive_neighbors = get_num_alive_cells_in_par_neighborhood(n_loc_c+4, current_generation, i+2, j+2, rank);
             new_cell_state = state_lookup[cell_state][num_alive_neighbors];
             next_generation[i][j] = new_cell_state;
         }
     }
 }
- */
 
 int main(int argc, char *argv[]) {
     int n = 10, n_generations = 2; // num rows, num cols, num generations
@@ -400,8 +423,6 @@ int main(int argc, char *argv[]) {
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], bottom_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
 
-        print_matrix_par(n_loc_r + 4, n_loc_c, loc_matrix_and_neighbor_top_bottom_rows, rank, size, 0);
-
         // second communication round to get left right cols from neighboring processes
         int i = 0;
         for (int r = 0; i < (n_loc_r + 4); i++, r++) { // copy first and second to last column
@@ -481,8 +502,10 @@ int main(int argc, char *argv[]) {
         }
 
         print_matrix_par(n_loc_r + 4, n_loc_c + 4, full_current_generation_loc, rank, size, 0);
-        // run_generation_par(full_current_generation_loc, next_generation_loc, n_loc_r, n_loc_c);
-        // copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
+        run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
+        copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
+
+        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
 
         // verification
         if (verify) {
