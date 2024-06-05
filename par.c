@@ -246,6 +246,7 @@ int main(int argc, char *argv[]) {
     int density = 28; // in percent
     int opt;
     int rank, size;
+    double total_time = 0.0, total_time_process, start_time, end_time;
 
     int n_loc_r, n_loc_c;
     int nprows, npcols;
@@ -449,6 +450,9 @@ int main(int argc, char *argv[]) {
     MPI_Cart_shift(cartcomm, 1, 1, &left_proc_neighbor, &right_proc_neighbor);
     MPI_Cart_shift(cartcomm, 0, 1, &top_proc_neighbor, &bottom_proc_neighbor);
 
+    MPI_Barrier(MPI_COMM_WORLD);
+    start_time = MPI_Wtime();
+
     // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
         // communicate top and bottom rows with neighboring processes
@@ -508,7 +512,9 @@ int main(int argc, char *argv[]) {
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
 
-        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
+        if (verbose) {
+            print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
+        }
 
         if (verify) {
             // run iteration of sequential version
@@ -528,8 +534,17 @@ int main(int argc, char *argv[]) {
                 printf("Sequential matrix after generation %d: \n", c_generation);
                 print_matrix(current_generation_seq, n);
             }
-            // todo maybe: send all verification results to one rank and output overall result only once
         }
+    }
+
+    end_time = MPI_Wtime();
+    total_time_process = (end_time - start_time) * 1e6; // μs
+    MPI_Reduce(&total_time_process, &total_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
+    printf("Total time rank %d: %.2f μs\n", rank, total_time_process);
+
+    if (rank == 0) {
+        printf("Max time across processes: %.2f μs\n", total_time);
     }
 
     free(current_generation_loc);
