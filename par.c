@@ -118,11 +118,37 @@ void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
     }
 }
 
-int compare_matrices(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
-    for (int i = 0; i < n * n; i++) {
-        if (matrix1[i] != matrix2[i]) return 0;
+int compare_matrices(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint8_t(*local_matrix)[n_loc_c], int n, int m_offset_r, int m_offset_c) {
+    int offset;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if(i >= m_offset_r && i < m_offset_r + n_loc_r &&
+               j >= m_offset_c && j < m_offset_c + n_loc_c) {
+                offset = get_offset(i, j, n);
+                if (sequential_matrix[offset] != local_matrix[i-m_offset_r][j-m_offset_c]) {
+                    printf("Verification failed at index %d %d\n", i, j);
+                    return 0;
+                }
+            }
+        }
     }
+
     return 1;
+}
+
+void copy_full_matrix_to_local_matrix(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint8_t(*local_matrix)[n_loc_c], int n, int m_offset_r, int m_offset_c) {
+    int offset;
+
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if(i >= m_offset_r && i < m_offset_r + n_loc_r &&
+               j >= m_offset_c && j < m_offset_c + n_loc_c) {
+                offset = get_offset(i, j, n);
+                local_matrix[i-m_offset_r][j-m_offset_c] = sequential_matrix[offset];
+            }
+        }
+    }
 }
 
 void fill_matrix_par(int n_loc_r, int n_loc_c, uint8_t(*matrix)[n_loc_c], int n, int density, int m_offset_r, int m_offset_c) {
@@ -175,24 +201,24 @@ uint8_t get_num_alive_cells_in_par_neighborhood(int n_loc_c, uint8_t(*matrix)[n_
     uint8_t num_alive_cells = 0;
 
     num_alive_cells += matrix[i-2][j-2];
-    if (rank == 0) printf("i - 2, j - 2: %d\n", matrix[i-2][j-2]);
+    // if (rank == 0) printf("i - 2, j - 2: %d\n", matrix[i-2][j-2]);
     num_alive_cells += matrix[i][j-2];
-    if (rank == 0) printf("i, j - 2: %d\n", matrix[i][j-2]);
+    // if (rank == 0) printf("i, j - 2: %d\n", matrix[i][j-2]);
     num_alive_cells += matrix[i+2][j-2];
-    if (rank == 0) printf("i + 2, j - 2: %d\n", matrix[i+2][j-2]);
+    // if (rank == 0) printf("i + 2, j - 2: %d\n", matrix[i+2][j-2]);
     num_alive_cells += matrix[i-1][j];
-    if (rank == 0) printf("i - 1, j: %d\n", matrix[i-1][j]);
+    // if (rank == 0) printf("i - 1, j: %d\n", matrix[i-1][j]);
     num_alive_cells += matrix[i+2][j];
-    if (rank == 0) printf("i + 2, j: %d\n", matrix[i+2][j]);
+    // if (rank == 0) printf("i + 2, j: %d\n", matrix[i+2][j]);
     num_alive_cells += matrix[i-1][j+1];
-    if (rank == 0) printf("i - 1, j + 1: %d\n", matrix[i-1][j+1]);
+    // if (rank == 0) printf("i - 1, j + 1: %d\n", matrix[i-1][j+1]);
     num_alive_cells += matrix[i][j+1];
-    if (rank == 0) printf("i, j + 1: %d\n", matrix[i][j+1]);
+    // if (rank == 0) printf("i, j + 1: %d\n", matrix[i][j+1]);
     num_alive_cells += matrix[i+2][j+2];
-    if (rank == 0) printf("i + 2, j + 2: %d\n", matrix[i+2][j+2]);
+    // if (rank == 0) printf("i + 2, j + 2: %d\n", matrix[i+2][j+2]);
 
-    if (rank == 0) printf("i: %d, j: %d, num alive cells: %d\n", i-2, j-2, num_alive_cells);
-    if (rank == 0) printf("local matrix at i: %d, j: %d is %d\n", i-2, j-2, matrix[i][j]);
+    // if (rank == 0) printf("i: %d, j: %d, num alive cells: %d\n", i-2, j-2, num_alive_cells);
+    // if (rank == 0) printf("local matrix at i: %d, j: %d is %d\n", i-2, j-2, matrix[i][j]);
     return num_alive_cells;
 }
 
@@ -224,6 +250,7 @@ int main(int argc, char *argv[]) {
     int n_loc_r, n_loc_c;
     int nprows, npcols;
     int prow_idx, pcol_idx;
+    int verification_result;
 
     // cartesian communicator
     int dims[2] = {0, 0}; // set to 0 to dynamically set dimensions based on number of processes
@@ -353,12 +380,10 @@ int main(int argc, char *argv[]) {
     // allocate matrices for sequential verification
     uint8_t *current_generation_seq = NULL;
     uint8_t *next_generation_seq = NULL;
-    uint8_t *current_generation_par_global = NULL;
 
-    if (rank == 0 && verify) {
+    if (verify) {
         current_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
         next_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
-        current_generation_par_global = (uint8_t *)malloc(n * n * sizeof(uint8_t));
     }
 
     // get offset of local matrix in global matrix
@@ -368,23 +393,39 @@ int main(int argc, char *argv[]) {
         printf("%d: prow_idx: %d pcol_idx: %d m_offset_r: %d m_offset_c: %d\n", rank, prow_idx, pcol_idx, m_offset_r, m_offset_c);
     }
 
-    // fill local matrix with initial input
-    fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
-
-    // gather all local submatrices into the global matrix on rank 0
+    // input generation
     if (verify) {
-        MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
-                   current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
-                   0, MPI_COMM_WORLD);
+        // get sequential input
+        fill_matrix(current_generation_seq, n, density);
+
+        if (rank == 0 && verbose) {
+            printf("Sequential input matrix: \n");
+            print_matrix(current_generation_seq, n);
+        }
+
+        // copy values into local matrix
+        copy_full_matrix_to_local_matrix(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+    } else {
+        // fill local matrix with initial input
+        fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
     }
 
-    if (verify && rank == 0) {
-        copy_matrix(current_generation_seq, current_generation_par_global, n);
-    }
+    fflush(stdout);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    if (verify && rank == 0 && verbose) {
-        printf("Input matrix: \n");
-        print_matrix(current_generation_par_global, n);
+    // verify initial input
+    if (verify && verbose) {
+        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
+        verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+
+        if (verification_result) {
+            printf("Input verification on rank %d was successful\n", rank);
+        } else {
+            printf("Input verification on rank %d failed\n", rank);
+        }
+
+        fflush(stdout);
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     // communication buffers
@@ -408,8 +449,6 @@ int main(int argc, char *argv[]) {
     MPI_Cart_shift(cartcomm, 1, 1, &left_proc_neighbor, &right_proc_neighbor);
     MPI_Cart_shift(cartcomm, 0, 1, &top_proc_neighbor, &bottom_proc_neighbor);
 
-    // printf("rank: %d, left: %d, right: %d, top: %d, bottom: %d\n", rank, left_proc_neighbor, right_proc_neighbor, top_proc_neighbor, bottom_proc_neighbor);
-
     // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
         // communicate top and bottom rows with neighboring processes
@@ -418,10 +457,14 @@ int main(int argc, char *argv[]) {
         MPI_Sendrecv(current_generation_loc[n_loc_r - 2], 2 * n_loc_c, MPI_UINT8_T, bottom_proc_neighbor, 0,
                      top_rows_recv, 2 * n_loc_c, MPI_UINT8_T, top_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
 
+        // print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
+
         // fill intermediate result buffer for next communication step
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], top_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], bottom_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
+
+        // print_matrix_par(n_loc_r + 4, n_loc_c, loc_matrix_and_neighbor_top_bottom_rows, rank, size, c_generation);
 
         // second communication round to get left right cols from neighboring processes
         int i = 0;
@@ -434,26 +477,6 @@ int main(int argc, char *argv[]) {
             right_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][n_loc_c - 1];
         }
 
-        /*
-        printf("Right rows sent rank %d:\n", rank);
-        for (int i = 0; i < 2 * (n_loc_r + 4); i++) {
-            printf("%u ", right_col[i]);
-            if (i == (n_loc_r + 4 - 1)) printf("\n");
-        }
-        printf("\n\n");
-        fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        printf("Left rows sent rank %d:\n", rank);
-        for (int i = 0; i < 2 * (n_loc_r + 4); i++) {
-            printf("%u ", left_col[i]);
-            if (i == (n_loc_r + 4 - 1)) printf("\n");
-        }
-        printf("\n\n");
-        fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
-         */
-
         MPI_Sendrecv(left_col, 2 * (n_loc_r + 4), MPI_UINT8_T, left_proc_neighbor, 0,
                      right_cols_recv, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
         MPI_Sendrecv(right_col, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0,
@@ -461,26 +484,6 @@ int main(int argc, char *argv[]) {
 
         fflush(stdout);
         MPI_Barrier(MPI_COMM_WORLD);
-
-        /*
-        printf("Right rows received rank %d:\n", rank);
-        for (int i = 0; i < 2 * (n_loc_r + 4); i++) {
-            printf("%u ", right_cols_recv[i]);
-            if (i == (n_loc_r + 4 - 1)) printf("\n");
-        }
-        printf("\n\n");
-        fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        printf("Left rows received rank %d:\n", rank);
-        for (int i = 0; i < 2 * (n_loc_r + 4); i++) {
-            printf("%u ", left_cols_recv[i]);
-            if (i == (n_loc_r + 4 - 1)) printf("\n");
-        }
-        printf("\n\n");
-        fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
-         */
 
         // copy left columns
         for (int r = 0; r < (n_loc_r + 4); r++) {
@@ -501,42 +504,32 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        print_matrix_par(n_loc_r + 4, n_loc_c + 4, full_current_generation_loc, rank, size, 0);
+        // print_matrix_par(n_loc_r + 4, n_loc_c + 4, full_current_generation_loc, rank, size, 0);
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
 
-        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
+        print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
 
-        // verification
         if (verify) {
-            if (rank == 0) {
-                run_generation(current_generation_seq, next_generation_seq, n);
-                copy_matrix(current_generation_seq, next_generation_seq, n);
+            // run iteration of sequential version
+            run_generation(current_generation_seq, next_generation_seq, n);
+            copy_matrix(current_generation_seq, next_generation_seq, n);
+
+            // verification
+            verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+
+            if (verification_result) {
+                printf("Verification after generation %d on rank %d was successful\n", c_generation, rank);
+            } else {
+                printf("Verification after generation %d on rank %d failed\n", c_generation, rank);
             }
 
-            MPI_Gather(current_generation_loc, n_loc_r * n_loc_c, MPI_UINT8_T,
-                       current_generation_par_global, n_loc_r * n_loc_c, MPI_UINT8_T,
-                       0, MPI_COMM_WORLD);
-
-            if (rank == 0) {
-                int verification_result = compare_matrices(current_generation_seq, current_generation_par_global, n);
-
-                if (verification_result) {
-                    printf("Verification after generation %d was successful\n", c_generation);
-                } else {
-                    printf("Verification after generation %d failed\n", c_generation);
-                }
-
-                if (verbose) {
-                    printf("Sequential matrix after generation %d: \n", c_generation);
-                    print_matrix(current_generation_seq, n);
-                    printf("Parallel matrix after generation %d: \n", c_generation);
-                    print_matrix(current_generation_par_global, n);
-                }
+            if (verbose && rank == 0) {
+                printf("Sequential matrix after generation %d: \n", c_generation);
+                print_matrix(current_generation_seq, n);
             }
+            // todo maybe: send all verification results to one rank and output overall result only once
         }
-
-        // todo: output
     }
 
     free(current_generation_loc);
@@ -551,7 +544,6 @@ int main(int argc, char *argv[]) {
     if (rank == 0 && verify) {
         free(current_generation_seq);
         free(next_generation_seq);
-        free(current_generation_par_global);
     }
 
     MPI_Finalize();
