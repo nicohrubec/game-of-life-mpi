@@ -1,17 +1,17 @@
 seq: seq.c
-	mpicc -Wall --std=c99 -o seq seq.c
+	mpicc -O3 -Wall --std=c99 -o seq seq.c
 
 clean_seq:
 	rm -f seq
 
 par: par.c
-	mpicc -Wall --std=c99 -o par par.c
+	mpicc -O3 -Wall --std=c99 -o par par.c
 
 clean_par:
 	rm -f par
 
 par_collective: par_collective.c
-	mpicc -Wall --std=c99 -o par_collective par_collective.c
+	mpicc -O3 -Wall --std=c99 -o par_collective par_collective.c
 
 clean_par_collective:
 	rm -f par_collective
@@ -23,4 +23,4 @@ clean_mpi_rand:
 	rm -f mpi_rand
 
 clean:
-	rm -f seq par mpi_rand
+	rm -f seq par par_collective mpi_rand
