@@ -336,7 +336,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    MPI_Cart_coords(cartcomm, rank, 2, coords); // get process coordinates in created grid
+    MPI_Cart_coords(cartcomm_reorder, rank, 2, coords); // get process coordinates in created grid
 
     prow_idx = coords[0];
     pcol_idx = coords[1];
