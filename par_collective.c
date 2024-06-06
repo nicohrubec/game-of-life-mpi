@@ -420,7 +420,63 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    // todo: setup neighbor grid
+    int top_bottom_neighbors[2];
+    int left_right_neighbors[2];
+    int weights[2] = {1, 1};
+
+    // Determine neighbors
+    MPI_Cart_shift(cartcomm, 1, 1, &left_right_neighbors[0], &left_right_neighbors[1]);
+    MPI_Cart_shift(cartcomm, 0, 1, &top_bottom_neighbors[0], &top_bottom_neighbors[1]);
+
+    printf("Top neighbor rank %d: %d\n", rank, top_bottom_neighbors[0]);
+    printf("Bottom neighbor %d: %d\n", rank, top_bottom_neighbors[1]);
+    printf("Left neighbor %d: %d\n", rank, left_right_neighbors[0]);
+    printf("Right neighbor %d: %d\n", rank, left_right_neighbors[1]);
+
+    MPI_Comm dist_graph_top_bottom;
+    MPI_Comm dist_graph_left_right;
+
+    // create top bottom neighbor graph
+    MPI_Dist_graph_create_adjacent(
+            MPI_COMM_WORLD,
+            2, // number of sources
+            top_bottom_neighbors, // sources
+            weights,
+            2, // number of destinations
+            top_bottom_neighbors, // destinations
+            weights,
+            MPI_INFO_NULL,
+            0, // no reordering
+            &dist_graph_top_bottom
+    );
+    // create left right neighbor graph
+    MPI_Dist_graph_create_adjacent(
+            MPI_COMM_WORLD,
+            2, // number of sources
+            left_right_neighbors, // sources
+            weights,
+            2, // number of destinations
+            left_right_neighbors, // destinations
+            weights,
+            MPI_INFO_NULL,
+            0, // no reordering
+            &dist_graph_left_right
+    );
+
+    // communication setup
+    int sendcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
+    int recvcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
+
+    int sdispls[2] = {0, 0};
+    int rdispls[2] = {0, 0};
+
+    // communication buffers
+    uint8_t *sendbuf_top_bottom = malloc(4 * n_loc_c * sizeof(uint8_t));
+    uint8_t *recvbuf_top_bottom = malloc(4 * n_loc_c * sizeof(uint8_t));
+
+    // intermediate result buffer after top and bottom rows are communicated
+    uint8_t(*loc_matrix_and_neighbor_top_bottom_rows)[n_loc_c];
+    loc_matrix_and_neighbor_top_bottom_rows = (uint8_t(*)[n_loc_c])malloc((n_loc_r + 4) * n_loc_c * sizeof(uint8_t));
 
     // final intermediate result buffer with all neighbors
     uint8_t(*full_current_generation_loc)[n_loc_c + 4];
@@ -430,9 +486,57 @@ int main(int argc, char *argv[]) {
     start_time = MPI_Wtime();
 
     // run gol
-    // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
-        // todo: communication with neighbors
+        // fill buffers for communication with top and bottom neighbors
+        memcpy(&sendbuf_top_bottom[0], current_generation_loc[0], 2 * n_loc_c * sizeof(uint8_t));
+        memcpy(&sendbuf_top_bottom[2 * n_loc_c], current_generation_loc[n_loc_r - 2], 2 * n_loc_c * sizeof(uint8_t));
+
+        printf("Process %d sending top rows:\n", rank);
+        for (int i = 0; i < 2 * n_loc_c; i++) {
+            printf("%d ", sendbuf_top_bottom[i]);
+            if (i == n_loc_c-1) printf("\n");
+        }
+        printf("\nProcess %d sending bottom rows:\n", rank);
+        for (int i = 2 * n_loc_c; i < 4 * n_loc_c; i++) {
+            printf("%d ", sendbuf_top_bottom[i]);
+            if (i == 3 * n_loc_c-1) printf("\n");
+        }
+        printf("\n");
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        fflush(stdout);
+
+        // first communication round with top and bottom neighbors
+        MPI_Neighbor_alltoallv(
+                sendbuf_top_bottom, sendcounts_top_bottom, sdispls, MPI_UINT8_T,
+                recvbuf_top_bottom, recvcounts_top_bottom, rdispls, MPI_UINT8_T,
+                dist_graph_top_bottom
+        );
+
+        printf("Process %d received top rows:\n", rank);
+        for (int i = 0; i < 2 * n_loc_c; i++) {
+            printf("%d ", recvbuf_top_bottom[i]);
+
+            if (i == n_loc_c-1) printf("\n");
+        }
+        printf("\nProcess %d received bottom rows:\n", rank);
+        for (int i = 2 * n_loc_c; i < 4 * n_loc_c; i++) {
+            printf("%d ", recvbuf_top_bottom[i]);
+            if (i == 3 * n_loc_c-1) printf("\n");
+        }
+        printf("\n");
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        fflush(stdout);
+
+        // fill intermediate result buffer for next communication step
+        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], &recvbuf_top_bottom[2 * n_loc_c], 2 * n_loc_c * sizeof(uint8_t));
+        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], recvbuf_top_bottom, 2 * n_loc_c * sizeof(uint8_t));
+        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
+
+        // todo: second communication round with left and right neighbors
+
+        print_matrix_par(n_loc_r + 4, n_loc_c, loc_matrix_and_neighbor_top_bottom_rows, rank, size, c_generation);
 
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
