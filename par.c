@@ -127,7 +127,6 @@ int compare_matrices(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint
                j >= m_offset_c && j < m_offset_c + n_loc_c) {
                 offset = get_offset(i, j, n);
                 if (sequential_matrix[offset] != local_matrix[i-m_offset_r][j-m_offset_c]) {
-                    printf("Verification failed at index %d %d\n", i, j);
                     return 0;
                 }
             }
@@ -201,24 +200,14 @@ uint8_t get_num_alive_cells_in_par_neighborhood(int n_loc_c, uint8_t(*matrix)[n_
     uint8_t num_alive_cells = 0;
 
     num_alive_cells += matrix[i-2][j-2];
-    // if (rank == 0) printf("i - 2, j - 2: %d\n", matrix[i-2][j-2]);
     num_alive_cells += matrix[i][j-2];
-    // if (rank == 0) printf("i, j - 2: %d\n", matrix[i][j-2]);
     num_alive_cells += matrix[i+2][j-2];
-    // if (rank == 0) printf("i + 2, j - 2: %d\n", matrix[i+2][j-2]);
     num_alive_cells += matrix[i-1][j];
-    // if (rank == 0) printf("i - 1, j: %d\n", matrix[i-1][j]);
     num_alive_cells += matrix[i+2][j];
-    // if (rank == 0) printf("i + 2, j: %d\n", matrix[i+2][j]);
     num_alive_cells += matrix[i-1][j+1];
-    // if (rank == 0) printf("i - 1, j + 1: %d\n", matrix[i-1][j+1]);
     num_alive_cells += matrix[i][j+1];
-    // if (rank == 0) printf("i, j + 1: %d\n", matrix[i][j+1]);
     num_alive_cells += matrix[i+2][j+2];
-    // if (rank == 0) printf("i + 2, j + 2: %d\n", matrix[i+2][j+2]);
 
-    // if (rank == 0) printf("i: %d, j: %d, num alive cells: %d\n", i-2, j-2, num_alive_cells);
-    // if (rank == 0) printf("local matrix at i: %d, j: %d is %d\n", i-2, j-2, matrix[i][j]);
     return num_alive_cells;
 }
 
@@ -405,7 +394,6 @@ int main(int argc, char *argv[]) {
             print_matrix(current_generation_seq, n);
         }
 
-        // copy values into local matrix
         copy_full_matrix_to_local_matrix(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
     } else {
         // fill local matrix with initial input
@@ -431,7 +419,6 @@ int main(int argc, char *argv[]) {
                 printf("Input verification on rank %d failed\n", rank);
             }
         }
-
 
         fflush(stdout);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -469,16 +456,12 @@ int main(int argc, char *argv[]) {
         MPI_Sendrecv(current_generation_loc[n_loc_r - 2], 2 * n_loc_c, MPI_UINT8_T, bottom_proc_neighbor, 0,
                      top_rows_recv, 2 * n_loc_c, MPI_UINT8_T, top_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
 
-        // print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, c_generation);
-
         // fill intermediate result buffer for next communication step
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], top_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], bottom_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
 
-        // print_matrix_par(n_loc_r + 4, n_loc_c, loc_matrix_and_neighbor_top_bottom_rows, rank, size, c_generation);
-
-        // second communication round to get left right cols from neighboring processes
+        // second communication round to get left right cols from neighboring processes which also gets us the diagonals
         int i = 0;
         for (int r = 0; i < (n_loc_r + 4); i++, r++) { // copy first and second to last column
             left_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][0];
@@ -493,9 +476,6 @@ int main(int argc, char *argv[]) {
                      right_cols_recv, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
         MPI_Sendrecv(right_col, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0,
                      left_cols_recv, 2 * (n_loc_r + 4), MPI_UINT8_T, left_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
-
-        fflush(stdout);
-        MPI_Barrier(MPI_COMM_WORLD);
 
         // copy left columns
         for (int r = 0; r < (n_loc_r + 4); r++) {
@@ -516,7 +496,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // print_matrix_par(n_loc_r + 4, n_loc_c + 4, full_current_generation_loc, rank, size, 0);
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
 
@@ -552,10 +531,8 @@ int main(int argc, char *argv[]) {
     total_time_process = (end_time - start_time) * 1e6; // μs
     MPI_Reduce(&total_time_process, &total_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    printf("Total time rank %d: %.2f μs\n", rank, total_time_process);
-
     if (rank == 0) {
-        printf("Max time across processes: %.2f μs\n", total_time);
+        printf("Total time: %.2f μs\n", total_time);
     }
 
     free(current_generation_loc);

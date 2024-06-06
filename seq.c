@@ -64,23 +64,13 @@ uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int 
     uint8_t num_alive_cells = 0;
 
     num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
-    // printf("i - 2, j - 2: %d\n", get_neighbor_value(matrix, stencil_minus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n));
     num_alive_cells += get_neighbor_value(matrix, i, stencil_minus_operator(j, 2, n), n);
-    // printf("i, j - 2: %d\n", get_neighbor_value(matrix, i, stencil_minus_operator(j, 2, n), n));
     num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
-    // printf("i + 2, j - 2: %d\n", get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n));
     num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), j, n);
-    // printf("i - 1, j: %d\n", get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), j, n));
     num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), j, n);
-    // printf("i + 2, j: %d\n", get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), j, n));
     num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), stencil_plus_operator(j, 1, n), n);
-    // printf("i - 1, j + 1: %d\n", get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), stencil_plus_operator(j, 1, n), n));
     num_alive_cells += get_neighbor_value(matrix, i, stencil_plus_operator(j, 1, n), n);
-    // printf("i, j + 1: %d\n", get_neighbor_value(matrix, i, stencil_plus_operator(j, 1, n), n));
     num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_plus_operator(j, 2, n), n);
-    // printf("i + 2, j + 2: %d\n", get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_plus_operator(j, 2, n), n));
-
-    // printf("i: %d, j: %d, num alive cells: %d\n", i, j, num_alive_cells);
 
     return num_alive_cells;
 }
@@ -192,7 +182,7 @@ int main(int argc, char *argv[]) {
     srand(seed); // guarantee reproducible results
 
     if (verbose) {
-        printf("Parameters:");
+        printf("Parameters:\n");
         printf("seed: %d\n", seed);
         printf("number: %d\n", n);
         printf("n_generations: %d\n", n_generations);
@@ -228,7 +218,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Total time: %f\n", total_time);
+    printf("Total time: %.2f μs\n", total_time);
     printf("Average time/generation: %f\n", total_time / n_generations);
 
     // resource clean up
