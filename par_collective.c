@@ -226,7 +226,7 @@ void run_generation_par(int n_loc_r, int n_loc_c, uint8_t(*current_generation)[n
 }
 
 int main(int argc, char *argv[]) {
-    int n = 10, n_generations = 2; // num rows, num cols, num generations
+    int n = 10, n_generations = 1000; // num rows, num cols, num generations
     int seed = 42;
     int verbose = 0;
     int verify = 0; // if set we perform verification with the sequential version
@@ -410,9 +410,9 @@ int main(int argc, char *argv[]) {
 
         if (rank == 0) {
             if (verification_result) {
-                printf("Input verification on rank %d was successful\n", rank);
+                printf("Input verification was successful\n");
             } else {
-                printf("Input verification on rank %d failed\n", rank);
+                printf("Input verification failed\n");
             }
         }
 
@@ -542,21 +542,23 @@ int main(int argc, char *argv[]) {
             run_generation(current_generation_seq, next_generation_seq, n);
             copy_matrix(current_generation_seq, next_generation_seq, n);
 
-            // verification
-            process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
-            MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+            if (c_generation == n_generations) {
+                // gather verification results
+                process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+                MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
 
-            if (rank == 0) {
-                if (verification_result) {
-                    printf("Verification after generation %d was successful\n", c_generation);
-                } else {
-                    printf("Verification after generation %d failed\n", c_generation);
+                if (rank == 0) {
+                    if (verification_result) {
+                        printf("Verification after generation %d was successful\n", c_generation);
+                    } else {
+                        printf("Verification after generation %d failed\n", c_generation);
+                    }
                 }
-            }
 
-            if (verbose && rank == 0) {
-                printf("Sequential matrix after generation %d: \n", c_generation);
-                print_matrix(current_generation_seq, n);
+                if (verbose && rank == 0) {
+                    printf("Sequential matrix after generation %d: \n", c_generation);
+                    print_matrix(current_generation_seq, n);
+                }
             }
         }
     }
