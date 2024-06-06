@@ -60,7 +60,6 @@ int stencil_minus_operator(int x, int d, int m) {
     return modulo(x-d+m, m);
 }
 
-// applies stencil
 uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n) {
     uint8_t num_alive_cells = 0;
 
@@ -421,77 +420,15 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    // communication buffers
-    uint8_t *top_rows_recv = malloc(2 * n_loc_c * sizeof(uint8_t));
-    uint8_t *bottom_rows_recv = malloc(2 * n_loc_c * sizeof(uint8_t));
-    uint8_t *left_cols_recv = malloc(2 * (n_loc_r + 4) * sizeof(uint8_t));
-    uint8_t *right_cols_recv = malloc(2 * (n_loc_r + 4) * sizeof(uint8_t));
-    uint8_t *left_col = malloc(2 * (n_loc_r + 4) * sizeof(uint8_t));
-    uint8_t *right_col = malloc(2 * (n_loc_r + 4) * sizeof(uint8_t));
-
-    // intermediate result buffer after top and bottom rows are communicated
-    uint8_t(*loc_matrix_and_neighbor_top_bottom_rows)[n_loc_c];
-    loc_matrix_and_neighbor_top_bottom_rows = (uint8_t(*)[n_loc_c])malloc((n_loc_r + 4) * n_loc_c * sizeof(uint8_t));
-
-    // final intermediate result buffer with all neighbors
-    uint8_t(*full_current_generation_loc)[n_loc_c + 4];
-    full_current_generation_loc = (uint8_t(*)[n_loc_c + 4])malloc((n_loc_r + 4) * (n_loc_c + 4) * sizeof(uint8_t));
-
-    // get process neighbors
-    int left_proc_neighbor, right_proc_neighbor, top_proc_neighbor, bottom_proc_neighbor;
-    MPI_Cart_shift(cartcomm, 1, 1, &left_proc_neighbor, &right_proc_neighbor);
-    MPI_Cart_shift(cartcomm, 0, 1, &top_proc_neighbor, &bottom_proc_neighbor);
+    // todo: setup neighbor grid
 
     MPI_Barrier(MPI_COMM_WORLD);
     start_time = MPI_Wtime();
 
     // run gol
+    // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
-        // communicate top and bottom rows with neighboring processes
-        MPI_Sendrecv(current_generation_loc[0], 2 * n_loc_c, MPI_UINT8_T, top_proc_neighbor, 0,
-                     bottom_rows_recv, 2 * n_loc_c, MPI_UINT8_T, bottom_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
-        MPI_Sendrecv(current_generation_loc[n_loc_r - 2], 2 * n_loc_c, MPI_UINT8_T, bottom_proc_neighbor, 0,
-                     top_rows_recv, 2 * n_loc_c, MPI_UINT8_T, top_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
-
-        // fill intermediate result buffer for next communication step
-        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], top_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
-        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], bottom_rows_recv, 2 * n_loc_c * sizeof(uint8_t));
-        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
-
-        // second communication round to get left right cols from neighboring processes which also gets us the diagonals
-        int i = 0;
-        for (int r = 0; i < (n_loc_r + 4); i++, r++) { // copy first and second to last column
-            left_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][0];
-            right_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][n_loc_c - 2];
-        }
-        for (int r = 0; i < 2 * (n_loc_r + 4); i++, r++) { // copy second and last column
-            left_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][1];
-            right_col[i] = loc_matrix_and_neighbor_top_bottom_rows[r][n_loc_c - 1];
-        }
-
-        MPI_Sendrecv(left_col, 2 * (n_loc_r + 4), MPI_UINT8_T, left_proc_neighbor, 0,
-                     right_cols_recv, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
-        MPI_Sendrecv(right_col, 2 * (n_loc_r + 4), MPI_UINT8_T, right_proc_neighbor, 0,
-                     left_cols_recv, 2 * (n_loc_r + 4), MPI_UINT8_T, left_proc_neighbor, 0, cartcomm, MPI_STATUS_IGNORE);
-
-        // copy left columns
-        for (int r = 0; r < (n_loc_r + 4); r++) {
-            full_current_generation_loc[r][0] = left_cols_recv[r];
-            full_current_generation_loc[r][1] = left_cols_recv[(n_loc_r + 4) + r];
-        }
-
-        // copy right columns
-        for (int r = 0; r < (n_loc_r + 4); r++) {
-            full_current_generation_loc[r][(n_loc_c + 4 - 2)] = right_cols_recv[r];
-            full_current_generation_loc[r][(n_loc_c + 4 - 1)] = right_cols_recv[(n_loc_r + 4) + r];
-        }
-
-        // fill remaining full local matrix
-        for (int r = 0; r < (n_loc_r + 4); r++) {
-            for (int c = 0; c < n_loc_c; c++) {
-                full_current_generation_loc[r][2 + c] = loc_matrix_and_neighbor_top_bottom_rows[r][c];
-            }
-        }
+        // todo: communication with neighbors
 
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
@@ -534,12 +471,6 @@ int main(int argc, char *argv[]) {
 
     free(current_generation_loc);
     free(next_generation_loc);
-    free(top_rows_recv);
-    free(bottom_rows_recv);
-    free(left_cols_recv);
-    free(right_cols_recv);
-    free(loc_matrix_and_neighbor_top_bottom_rows);
-    free(full_current_generation_loc);
 
     if (rank == 0 && verify) {
         free(current_generation_seq);
