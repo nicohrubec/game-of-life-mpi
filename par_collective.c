@@ -422,6 +422,10 @@ int main(int argc, char *argv[]) {
 
     // todo: setup neighbor grid
 
+    // final intermediate result buffer with all neighbors
+    uint8_t(*full_current_generation_loc)[n_loc_c + 4];
+    full_current_generation_loc = (uint8_t(*)[n_loc_c + 4])malloc((n_loc_r + 4) * (n_loc_c + 4) * sizeof(uint8_t));
+
     MPI_Barrier(MPI_COMM_WORLD);
     start_time = MPI_Wtime();
 
