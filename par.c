@@ -356,8 +356,14 @@ int main(int argc, char *argv[]) {
     }
 
     // local matrix size
-    n_loc_r = n / nprows;
-    n_loc_c = n / npcols;
+    if (weak_scaling) {
+        n_loc_r = n;
+        n_loc_c = n;
+    } else {
+        n_loc_r = n / nprows;
+        n_loc_c = n / npcols;
+    }
+
     if (verbose && rank == 0) {
         printf("n_loc_r: %d n_loc_c: %d\n", n_loc_r, n_loc_c);
     }
