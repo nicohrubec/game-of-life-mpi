@@ -252,6 +252,7 @@ int main(int argc, char *argv[]) {
     int nprows, npcols;
     int prow_idx, pcol_idx;
     int verification_result;
+    int process_verification_result = 0;
 
     // cartesian communicator
     int dims[2] = {0, 0}; // set to 0 to dynamically set dimensions based on number of processes
@@ -414,16 +415,23 @@ int main(int argc, char *argv[]) {
     fflush(stdout);
     MPI_Barrier(MPI_COMM_WORLD);
 
-    // verify initial input
-    if (verify && verbose) {
+    if (verbose) {
         print_matrix_par(n_loc_r, n_loc_c, current_generation_loc, rank, size, 0);
-        verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+    }
 
-        if (verification_result) {
-            printf("Input verification on rank %d was successful\n", rank);
-        } else {
-            printf("Input verification on rank %d failed\n", rank);
+    // verify initial input
+    if (verify) {
+        process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+        MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
+
+        if (rank == 0) {
+            if (verification_result) {
+                printf("Input verification on rank %d was successful\n", rank);
+            } else {
+                printf("Input verification on rank %d failed\n", rank);
+            }
         }
+
 
         fflush(stdout);
         MPI_Barrier(MPI_COMM_WORLD);
@@ -522,12 +530,15 @@ int main(int argc, char *argv[]) {
             copy_matrix(current_generation_seq, next_generation_seq, n);
 
             // verification
-            verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+            process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+            MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
 
-            if (verification_result) {
-                printf("Verification after generation %d on rank %d was successful\n", c_generation, rank);
-            } else {
-                printf("Verification after generation %d on rank %d failed\n", c_generation, rank);
+            if (rank == 0) {
+                if (verification_result) {
+                    printf("Verification after generation %d was successful\n", c_generation);
+                } else {
+                    printf("Verification after generation %d failed\n", c_generation);
+                }
             }
 
             if (verbose && rank == 0) {
