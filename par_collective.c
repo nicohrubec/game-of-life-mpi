@@ -466,6 +466,8 @@ int main(int argc, char *argv[]) {
     // communication setup
     int sendcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
     int recvcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
+    int sendcounts_left_right[2] = {4 * (n_loc_r + 4), 4 * (n_loc_r + 4)};
+    int recvcounts_left_right[2] = {4 * (n_loc_r + 4), 4 * (n_loc_r + 4)};
 
     int sdispls[2] = {0, 0};
     int rdispls[2] = {0, 0};
@@ -473,6 +475,8 @@ int main(int argc, char *argv[]) {
     // communication buffers
     uint8_t *sendbuf_top_bottom = malloc(4 * n_loc_c * sizeof(uint8_t));
     uint8_t *recvbuf_top_bottom = malloc(4 * n_loc_c * sizeof(uint8_t));
+    uint8_t *sendbuf_left_right = malloc(4 * (n_loc_r + 4) * sizeof(uint8_t));
+    uint8_t *recvbuf_left_right = malloc(4 * (n_loc_r + 4) * sizeof(uint8_t));
 
     // intermediate result buffer after top and bottom rows are communicated
     uint8_t(*loc_matrix_and_neighbor_top_bottom_rows)[n_loc_c];
@@ -491,6 +495,7 @@ int main(int argc, char *argv[]) {
         memcpy(&sendbuf_top_bottom[0], current_generation_loc[0], 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&sendbuf_top_bottom[2 * n_loc_c], current_generation_loc[n_loc_r - 2], 2 * n_loc_c * sizeof(uint8_t));
 
+        /*
         printf("Process %d sending top rows:\n", rank);
         for (int i = 0; i < 2 * n_loc_c; i++) {
             printf("%d ", sendbuf_top_bottom[i]);
@@ -505,6 +510,7 @@ int main(int argc, char *argv[]) {
 
         MPI_Barrier(MPI_COMM_WORLD);
         fflush(stdout);
+         */
 
         // first communication round with top and bottom neighbors
         MPI_Neighbor_alltoallv(
@@ -513,6 +519,7 @@ int main(int argc, char *argv[]) {
                 dist_graph_top_bottom
         );
 
+        /*
         printf("Process %d received top rows:\n", rank);
         for (int i = 0; i < 2 * n_loc_c; i++) {
             printf("%d ", recvbuf_top_bottom[i]);
@@ -528,15 +535,99 @@ int main(int argc, char *argv[]) {
 
         MPI_Barrier(MPI_COMM_WORLD);
         fflush(stdout);
+         */
 
         // fill intermediate result buffer for next communication step
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], &recvbuf_top_bottom[2 * n_loc_c], 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], recvbuf_top_bottom, 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
 
-        // todo: second communication round with left and right neighbors
-
         print_matrix_par(n_loc_r + 4, n_loc_c, loc_matrix_and_neighbor_top_bottom_rows, rank, size, c_generation);
+
+        // todo: second communication round with left and right neighbors
+        // fill buffers for communication with left and right neighbors
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            sendbuf_left_right[r] = loc_matrix_and_neighbor_top_bottom_rows[r][0]; // copy first column
+            sendbuf_left_right[r+(n_loc_r + 4)] = loc_matrix_and_neighbor_top_bottom_rows[r][1]; // copy second column
+            sendbuf_left_right[r+2*(n_loc_r + 4)] = loc_matrix_and_neighbor_top_bottom_rows[r][n_loc_c - 2]; // copy second to last column
+            sendbuf_left_right[r+3*(n_loc_r + 4)] = loc_matrix_and_neighbor_top_bottom_rows[r][n_loc_c - 1]; // copy last column
+        }
+
+        /*
+        // Debug output for send buffer before communication
+        printf("Process %d send buffer (left and right columns):\n", rank);
+        printf("Left and second left columns:\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", sendbuf_left_right[r]); // First column
+        }
+        printf("\n\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", sendbuf_left_right[r + (n_loc_r + 4)]); // Second column
+        }
+        printf("\n\n");
+
+        printf("Right and second right columns:\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", sendbuf_left_right[r + 2 * (n_loc_r + 4)]); // Second to last column
+        }
+        printf("\n\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", sendbuf_left_right[r + 3 * (n_loc_r + 4)]); // Last column
+        }
+        printf("\n");
+        MPI_Barrier(MPI_COMM_WORLD);
+        fflush(stdout);
+         */
+
+        // second communication round with left and right neighbors
+        MPI_Neighbor_alltoallv(
+                sendbuf_left_right, sendcounts_left_right, sdispls, MPI_UINT8_T,
+                recvbuf_left_right, recvcounts_left_right, rdispls, MPI_UINT8_T,
+                dist_graph_left_right
+        );
+
+        /*
+        // todo: look at what I receive and put in correct place
+        // Debug output for receive buffer after communication
+        printf("Process %d receive buffer (left and right columns):\n", rank);
+        printf("Received left and second left columns:\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", recvbuf_left_right[r]); // First column received
+        }
+        printf("\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", recvbuf_left_right[r + (n_loc_r + 4)]); // Second column received
+        }
+        printf("\n");
+
+        printf("Received right and second right columns:\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", recvbuf_left_right[r + 2 * (n_loc_r + 4)]); // Second to last column received
+        }
+        printf("\n");
+        for (int r = 0; r < (n_loc_r + 4); r++) {
+            printf("%d \n", recvbuf_left_right[r + 3 * (n_loc_r + 4)]); // Last column received
+        }
+        printf("\n");
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        fflush(stdout);
+         */
+
+        // fill final buffer
+        for (int r = 0; r < (n_loc_r + 4); r++) { // fill left and right cols
+            full_current_generation_loc[r][0] = recvbuf_left_right[r+2*(n_loc_r+4)];; // copy first column
+            full_current_generation_loc[r][1] = recvbuf_left_right[r+3*(n_loc_r+4)]; // copy second column
+            full_current_generation_loc[r][(n_loc_c + 4 - 2)] = recvbuf_left_right[r]; // copy second to last column
+            full_current_generation_loc[r][(n_loc_c + 4 - 1)] = recvbuf_left_right[r+(n_loc_r+4)]; // copy last column
+        }
+        for (int r = 0; r < (n_loc_r + 4); r++) { // fill remaining full local matrix
+            for (int c = 0; c < n_loc_c; c++) {
+                full_current_generation_loc[r][2 + c] = loc_matrix_and_neighbor_top_bottom_rows[r][c];
+            }
+        }
+
+        print_matrix_par(n_loc_r + 4, n_loc_c + 4, full_current_generation_loc, rank, size, c_generation);
 
         run_generation_par(n_loc_r, n_loc_c, full_current_generation_loc, next_generation_loc, rank);
         copy_matrix_par(n_loc_r, n_loc_c, current_generation_loc, next_generation_loc, rank, size);
