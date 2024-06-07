@@ -5,18 +5,11 @@
 #include <mpi.h>
 #include <string.h>
 
-int get_offset(int i, int j, int n) {
-    return i * n + j;
-}
-
 // prints a matrix for debugging
-void print_matrix(uint8_t(*matrix), int n) {
-    int offset;
-
+void print_matrix(int n, uint8_t(*matrix)[n]) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);
-            printf("%d ", matrix[offset]);
+            printf("%d ", matrix[i][j]);
         }
         printf("\n");
     }
@@ -25,12 +18,11 @@ void print_matrix(uint8_t(*matrix), int n) {
 
 // fills a matrix with an initial input
 // percentage of alive cells can be configured with the density
-void fill_matrix(uint8_t(*matrix), int n, int density) {
-    int offset, r;
+void fill_matrix(int n, uint8_t(*matrix)[n], int density) {
+    int r;
 
     for(int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);
             r = rand() % 100;
 
             if (r < density) {
@@ -39,13 +31,9 @@ void fill_matrix(uint8_t(*matrix), int n, int density) {
                 r = 0;
             }
 
-            matrix[offset] = r;
+            matrix[i][j] = r;
         }
     }
-}
-
-uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n) {
-    return matrix[get_offset(i, j, n)];
 }
 
 int modulo(int x, int y) {
@@ -61,7 +49,7 @@ int stencil_minus_operator(int x, int d, int m) {
 }
 
 // applies stencil
-uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n) {
+uint8_t get_num_alive_cells_in_neighborhood(int n, uint8_t(*matrix)[n], int i, int j) {
     uint8_t num_alive_cells = 0;
 
     // precompute indices
@@ -72,14 +60,14 @@ uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int 
     const int i_plus_2_idx = stencil_plus_operator(i, 2, n);
     const int j_plus_2_idx = stencil_plus_operator(j, 2, n);
 
-    num_alive_cells += get_neighbor_value(matrix, i_minus_2_idx, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j, n);
-    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j_plus_1_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i, j_plus_1_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_plus_2_idx, n);
+    num_alive_cells += matrix[i_minus_2_idx][j_minus_2_idx];
+    num_alive_cells += matrix[i][j_minus_2_idx];
+    num_alive_cells += matrix[i_plus_2_idx][j_minus_2_idx];
+    num_alive_cells += matrix[i_minus_1_idx][j];
+    num_alive_cells += matrix[i_plus_2_idx][j];
+    num_alive_cells += matrix[i_minus_1_idx][j_plus_1_idx];
+    num_alive_cells += matrix[i][j_plus_1_idx];
+    num_alive_cells += matrix[i_plus_2_idx][j_plus_2_idx];
 
     return num_alive_cells;
 }
@@ -90,28 +78,29 @@ uint8_t state_lookup[2][9] = {
 };
 
 // runs the gol for one iteration
-void run_generation(uint8_t(*current_generation), uint8_t(*next_generation), int n) {
-    int offset, num_alive_neighbors;
+void run_generation(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n]) {
+    int num_alive_neighbors;
     uint8_t new_cell_state;
     uint8_t cell_state;
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);
-            cell_state = current_generation[offset];
-            num_alive_neighbors = get_num_alive_cells_in_neighborhood(current_generation, i, j, n);
+            cell_state = current_generation[i][j];
+            num_alive_neighbors = get_num_alive_cells_in_neighborhood(n, current_generation, i, j);
             new_cell_state = state_lookup[cell_state][num_alive_neighbors];
-            next_generation[offset] = new_cell_state;
+            next_generation[i][j] = new_cell_state;
         }
     }
 }
 
 // prints the number of dead and alive cells
-void print_summary_output(uint8_t(*matrix), int n, int c_generation) {
+void print_summary_output(int n, uint8_t(*matrix)[n], int c_generation) {
     int num_alive_cells = 0;
 
-    for (int i = 0; i < n * n; i++) {
-        num_alive_cells += matrix[i];
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            num_alive_cells += matrix[i][j];
+        }
     }
 
     printf("\n\nOutput after generation %d:\n", c_generation);
@@ -120,21 +109,20 @@ void print_summary_output(uint8_t(*matrix), int n, int c_generation) {
 }
 
 // copies the values from matrix 2 to matrix 1
-void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
-    for (int i = 0; i < n * n; i++) {
-        matrix1[i] = matrix2[i];
+void copy_matrix(int n, uint8_t(*matrix1)[n], uint8_t(*matrix2)[n]) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            matrix1[i][j] = matrix2[i][j];
+        }
     }
 }
 
-int compare_matrices(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint8_t(*local_matrix)[n_loc_c], int n, int m_offset_r, int m_offset_c) {
-    int offset;
-
+int compare_matrices(int n_loc_r, int n_loc_c, int n, uint8_t(*sequential_matrix)[n], uint8_t(*local_matrix)[n_loc_c], int m_offset_r, int m_offset_c) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             if(i >= m_offset_r && i < m_offset_r + n_loc_r &&
                j >= m_offset_c && j < m_offset_c + n_loc_c) {
-                offset = get_offset(i, j, n);
-                if (sequential_matrix[offset] != local_matrix[i-m_offset_r][j-m_offset_c]) {
+                if (sequential_matrix[i][j] != local_matrix[i-m_offset_r][j-m_offset_c]) {
                     return 0;
                 }
             }
@@ -144,15 +132,12 @@ int compare_matrices(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint
     return 1;
 }
 
-void copy_full_matrix_to_local_matrix(int n_loc_r, int n_loc_c, uint8_t(*sequential_matrix), uint8_t(*local_matrix)[n_loc_c], int n, int m_offset_r, int m_offset_c) {
-    int offset;
-
+void copy_full_matrix_to_local_matrix(int n_loc_r, int n_loc_c, int n, uint8_t(*sequential_matrix)[n], uint8_t(*local_matrix)[n_loc_c], int m_offset_r, int m_offset_c) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             if(i >= m_offset_r && i < m_offset_r + n_loc_r &&
                j >= m_offset_c && j < m_offset_c + n_loc_c) {
-                offset = get_offset(i, j, n);
-                local_matrix[i-m_offset_r][j-m_offset_c] = sequential_matrix[offset];
+                local_matrix[i-m_offset_r][j-m_offset_c] = sequential_matrix[i][j];
             }
         }
     }
@@ -383,12 +368,12 @@ int main(int argc, char *argv[]) {
     next_generation_loc = (uint8_t(*)[n_loc_c])malloc(n_loc_r * n_loc_c * sizeof(uint8_t));
 
     // allocate matrices for sequential verification
-    uint8_t *current_generation_seq = NULL;
-    uint8_t *next_generation_seq = NULL;
+    uint8_t(*current_generation_seq)[n] = NULL;
+    uint8_t(*next_generation_seq)[n] = NULL;
 
     if (verify) {
-        current_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
-        next_generation_seq = (uint8_t *)malloc(n * n * sizeof(uint8_t));
+        current_generation_seq = (uint8_t(*)[n])malloc(n * n * sizeof(uint8_t));
+        next_generation_seq = (uint8_t(*)[n])malloc(n * n * sizeof(uint8_t));
     }
 
     // get offset of local matrix in global matrix
@@ -401,14 +386,14 @@ int main(int argc, char *argv[]) {
     // input generation
     if (verify) {
         // get sequential input
-        fill_matrix(current_generation_seq, n, density);
+        fill_matrix(n, current_generation_seq, density);
 
         if (rank == 0 && verbose) {
             printf("Sequential input matrix: \n");
-            print_matrix(current_generation_seq, n);
+            print_matrix(n, current_generation_seq);
         }
 
-        copy_full_matrix_to_local_matrix(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+        copy_full_matrix_to_local_matrix(n_loc_r, n_loc_c, n, current_generation_seq, current_generation_loc, m_offset_r, m_offset_c);
     } else {
         // fill local matrix with initial input
         fill_matrix_par(n_loc_r, n_loc_c, current_generation_loc, n, density, m_offset_r, m_offset_c);
@@ -420,7 +405,7 @@ int main(int argc, char *argv[]) {
 
     // verify initial input
     if (verify) {
-        process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+        process_verification_result = compare_matrices(n_loc_r, n_loc_c, n, current_generation_seq, current_generation_loc, m_offset_r, m_offset_c);
         MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
 
         if (rank == 0) {
@@ -516,12 +501,12 @@ int main(int argc, char *argv[]) {
 
         if (verify) {
             // run iteration of sequential version
-            run_generation(current_generation_seq, next_generation_seq, n);
-            copy_matrix(current_generation_seq, next_generation_seq, n);
+            run_generation(n, current_generation_seq, next_generation_seq);
+            copy_matrix(n, current_generation_seq, next_generation_seq);
 
             if (c_generation == n_generations) {
                 // gather verification results
-                process_verification_result = compare_matrices(n_loc_r, n_loc_c, current_generation_seq, current_generation_loc, n, m_offset_r, m_offset_c);
+                process_verification_result = compare_matrices(n_loc_r, n_loc_c, n, current_generation_seq, current_generation_loc, m_offset_r, m_offset_c);
                 MPI_Reduce(&process_verification_result, &verification_result, 1, MPI_INT, MPI_MIN, 0, MPI_COMM_WORLD);
 
                 if (rank == 0) {
@@ -534,7 +519,7 @@ int main(int argc, char *argv[]) {
 
                 if (verbose && rank == 0) {
                     printf("Sequential matrix after generation %d: \n", c_generation);
-                    print_matrix(current_generation_seq, n);
+                    print_matrix(n, current_generation_seq);
                 }
             }
         }

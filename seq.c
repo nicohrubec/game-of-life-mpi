@@ -4,18 +4,11 @@
 #include <stdint.h>
 #include <mpi.h>
 
-int get_offset(int i, int j, int n) {
-    return i * n + j;
-}
-
 // prints a matrix for debugging
-void print_matrix(uint8_t(*matrix), int n) {
-    int offset;
-
+void print_matrix(int n, uint8_t(*matrix)[n]) {
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);
-            printf("%d ", matrix[offset]);
+            printf("%d ", matrix[i][j]);
         }
         printf("\n");
     }
@@ -24,12 +17,11 @@ void print_matrix(uint8_t(*matrix), int n) {
 
 // fills a matrix with an initial input
 // percentage of alive cells can be configured with the density
-void fill_matrix(uint8_t(*matrix), int n, int density) {
-    int offset, r;
+void fill_matrix(int n, uint8_t(*matrix)[n], int density) {
+    int r;
 
     for(int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);
             r = rand() % 100;
 
             if (r < density) {
@@ -38,13 +30,9 @@ void fill_matrix(uint8_t(*matrix), int n, int density) {
                 r = 0;
             }
 
-            matrix[offset] = r;
+            matrix[i][j] = r;
         }
     }
-}
-
-uint8_t get_neighbor_value(uint8_t(*matrix), int i, int j, int n) {
-    return matrix[get_offset(i, j, n)];
 }
 
 int modulo(int x, int y) {
@@ -60,7 +48,7 @@ int stencil_minus_operator(int x, int d, int m) {
 }
 
 // applies stencil
-uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n) {
+uint8_t get_num_alive_cells_in_neighborhood(int n, uint8_t(*matrix)[n], int i, int j) {
     uint8_t num_alive_cells = 0;
 
     // precompute indices
@@ -71,14 +59,14 @@ uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int 
     const int i_plus_2_idx = stencil_plus_operator(i, 2, n);
     const int j_plus_2_idx = stencil_plus_operator(j, 2, n);
 
-    num_alive_cells += get_neighbor_value(matrix, i_minus_2_idx, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_minus_2_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j, n);
-    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j_plus_1_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i, j_plus_1_idx, n);
-    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_plus_2_idx, n);
+    num_alive_cells += matrix[i_minus_2_idx][j_minus_2_idx];
+    num_alive_cells += matrix[i][j_minus_2_idx];
+    num_alive_cells += matrix[i_plus_2_idx][j_minus_2_idx];
+    num_alive_cells += matrix[i_minus_1_idx][j];
+    num_alive_cells += matrix[i_plus_2_idx][j];
+    num_alive_cells += matrix[i_minus_1_idx][j_plus_1_idx];
+    num_alive_cells += matrix[i][j_plus_1_idx];
+    num_alive_cells += matrix[i_plus_2_idx][j_plus_2_idx];
 
     return num_alive_cells;
 }
@@ -89,28 +77,29 @@ uint8_t state_lookup[2][9] = {
 };
 
 // runs the gol for one iteration
-void run_generation(uint8_t(*current_generation), uint8_t(*next_generation), int n) {
-    int offset, num_alive_neighbors;
+void run_generation(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n]) {
+    int num_alive_neighbors;
     uint8_t new_cell_state;
     uint8_t cell_state;
 
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
-            offset = get_offset(i, j, n);;
-            cell_state = current_generation[offset];
-            num_alive_neighbors = get_num_alive_cells_in_neighborhood(current_generation, i, j, n);
+            cell_state = current_generation[i][j];
+            num_alive_neighbors = get_num_alive_cells_in_neighborhood(n, current_generation, i, j);
             new_cell_state = state_lookup[cell_state][num_alive_neighbors];
-            next_generation[offset] = new_cell_state;
+            next_generation[i][j] = new_cell_state;
         }
     }
 }
 
 // prints the number of dead and alive cells
-void print_summary_output(uint8_t(*matrix), int n, int c_generation) {
+void print_summary_output(int n, uint8_t(*matrix)[n], int c_generation) {
     int num_alive_cells = 0;
 
-    for (int i = 0; i < n * n; i++) {
-        num_alive_cells += matrix[i];
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            num_alive_cells += matrix[i][j];
+        }
     }
 
     printf("\n\nOutput after generation %d:\n", c_generation);
@@ -119,9 +108,11 @@ void print_summary_output(uint8_t(*matrix), int n, int c_generation) {
 }
 
 // copies the values from matrix 2 to matrix 1
-void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
-    for (int i = 0; i < n * n; i++) {
-        matrix1[i] = matrix2[i];
+void copy_matrix(int n, uint8_t(*matrix1)[n], uint8_t(*matrix2)[n]) {
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            matrix1[i][j] = matrix2[i][j];
+        }
     }
 }
 
@@ -198,22 +189,24 @@ int main(int argc, char *argv[]) {
     }
 
     // allocate matrices
-    uint8_t *current_generation = (uint8_t *)malloc(n * n * sizeof(uint8_t));
-    uint8_t *next_generation = (uint8_t *)malloc(n * n * sizeof(uint8_t));
+    uint8_t(*current_generation)[n];
+    current_generation = (uint8_t(*)[n])malloc(n * n * sizeof(uint8_t));
+    uint8_t(*next_generation)[n];
+    next_generation = (uint8_t(*)[n])malloc(n * n * sizeof(uint8_t));
 
     // generate initial input
-    fill_matrix(current_generation, n, density);
+    fill_matrix(n, current_generation, density);
 
     if (verbose) {
-        print_summary_output(current_generation, n, 0);
-        print_matrix(current_generation, n);
+        print_summary_output(n, current_generation, 0);
+        print_matrix(n, current_generation);
     }
 
     // run gol
     for (int c_generation = 1; c_generation <= n_generations; c_generation++) {
         start_time = MPI_Wtime();
-        run_generation(current_generation, next_generation, n);
-        copy_matrix(current_generation, next_generation, n);
+        run_generation(n, current_generation, next_generation);
+        copy_matrix(n, current_generation, next_generation);
         end_time = MPI_Wtime();
 
         total_time_generation = (end_time - start_time) * 1e6; // μs
@@ -222,8 +215,8 @@ int main(int argc, char *argv[]) {
         printf("Time needed for generation: %f\n", total_time_generation);
 
         if (verbose) {
-            print_summary_output(current_generation, n, c_generation);
-            print_matrix(current_generation, n);
+            print_summary_output(n, current_generation, c_generation);
+            print_matrix(n, current_generation);
             printf("Time needed for generation: %f\n", total_time_generation);
         }
     }
