@@ -212,8 +212,6 @@ int main(int argc, char *argv[]) {
         total_time_generation = (end_time - start_time) * 1e6; // μs
         total_time += total_time_generation;
 
-        printf("Time needed for generation: %f\n", total_time_generation);
-
         if (verbose) {
             print_summary_output(n, current_generation, c_generation);
             print_matrix(n, current_generation);
