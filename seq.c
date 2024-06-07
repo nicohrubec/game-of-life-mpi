@@ -118,7 +118,7 @@ void copy_matrix(uint8_t(*matrix1), uint8_t(*matrix2), int n) {
 }
 
 int main(int argc, char *argv[]) {
-    int n = 10, n_generations = 2; // num rows, num cols, num generations
+    int n = 10, n_generations = 1000; // num rows, num cols, num generations
     int seed = 42;
     int verbose = 0;
     int density = 28; // in percent
