@@ -63,14 +63,22 @@ int stencil_minus_operator(int x, int d, int m) {
 uint8_t get_num_alive_cells_in_neighborhood(uint8_t(*matrix), int i, int j, int n) {
     uint8_t num_alive_cells = 0;
 
-    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
-    num_alive_cells += get_neighbor_value(matrix, i, stencil_minus_operator(j, 2, n), n);
-    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_minus_operator(j, 2, n), n);
-    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), j, n);
-    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), j, n);
-    num_alive_cells += get_neighbor_value(matrix, stencil_minus_operator(i, 1, n), stencil_plus_operator(j, 1, n), n);
-    num_alive_cells += get_neighbor_value(matrix, i, stencil_plus_operator(j, 1, n), n);
-    num_alive_cells += get_neighbor_value(matrix, stencil_plus_operator(i, 2, n), stencil_plus_operator(j, 2, n), n);
+    // precompute indices
+    const int i_minus_2_idx = stencil_minus_operator(i, 2, n);
+    const int j_minus_2_idx = stencil_minus_operator(j, 2, n);
+    const int i_minus_1_idx = stencil_minus_operator(i, 1, n);
+    const int j_plus_1_idx = stencil_plus_operator(j, 1, n);
+    const int i_plus_2_idx = stencil_plus_operator(i, 2, n);
+    const int j_plus_2_idx = stencil_plus_operator(j, 2, n);
+
+    num_alive_cells += get_neighbor_value(matrix, i_minus_2_idx, j_minus_2_idx, n);
+    num_alive_cells += get_neighbor_value(matrix, i, j_minus_2_idx, n);
+    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_minus_2_idx, n);
+    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j, n);
+    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j, n);
+    num_alive_cells += get_neighbor_value(matrix, i_minus_1_idx, j_plus_1_idx, n);
+    num_alive_cells += get_neighbor_value(matrix, i, j_plus_1_idx, n);
+    num_alive_cells += get_neighbor_value(matrix, i_plus_2_idx, j_plus_2_idx, n);
 
     return num_alive_cells;
 }
@@ -210,6 +218,8 @@ int main(int argc, char *argv[]) {
 
         total_time_generation = (end_time - start_time) * 1e6; // μs
         total_time += total_time_generation;
+
+        printf("Time needed for generation: %f\n", total_time_generation);
 
         if (verbose) {
             print_summary_output(current_generation, n, c_generation);
