@@ -244,8 +244,7 @@ int main(int argc, char *argv[]) {
     MPI_Comm cartcomm_reorder;
 
     // define arguments
-    static struct option long_options[] = {{"num_rows", required_argument, 0, 'r'},
-                                           {"num_cols", required_argument, 0, 'c'},
+    static struct option long_options[] = {{"number", required_argument, 0, 'n'},
                                            {"num_generations", required_argument, 0, 'g'},
                                            {"seed", required_argument, 0, 's'},
                                            {"density", required_argument, 0, 'd'},
