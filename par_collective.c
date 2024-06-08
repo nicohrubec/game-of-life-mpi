@@ -37,7 +37,7 @@ void fill_matrix(int n, uint8_t(*matrix)[n], int density) {
 }
 
 int modulo(int x, int y) {
-    return x & (y - 1); // we can use this because y is always a power of 2
+    return x - (y * (x / y));
 }
 
 int stencil_plus_operator(int x, int d, int m) {
