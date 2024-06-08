@@ -71,23 +71,73 @@ uint8_t get_num_alive_cells_in_neighborhood(int n, uint8_t(*matrix)[n], int i, i
     return num_alive_cells;
 }
 
+uint8_t get_num_alive_cells_in_neighborhood_no_modulo(int n_loc_c, uint8_t(*matrix)[n_loc_c], int i, int j) {
+    uint8_t num_alive_cells = 0;
+
+    num_alive_cells += matrix[i-2][j-2];
+    num_alive_cells += matrix[i][j-2];
+    num_alive_cells += matrix[i+2][j-2];
+    num_alive_cells += matrix[i-1][j];
+    num_alive_cells += matrix[i+2][j];
+    num_alive_cells += matrix[i-1][j+1];
+    num_alive_cells += matrix[i][j+1];
+    num_alive_cells += matrix[i+2][j+2];
+
+    return num_alive_cells;
+}
+
 uint8_t state_lookup[2][9] = {
         { 0, 0, 0, 1, 0, 0, 0, 0, 0 },
         { 0, 0, 1, 1, 0, 0, 0, 0, 0 }
 };
 
-// runs the gol for one iteration
-void run_generation(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n]) {
+void run_update_with_modulo(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n], int i, int j) {
     int num_alive_neighbors;
     uint8_t new_cell_state;
     uint8_t cell_state;
 
-    for (int i = 0; i < n; i++) {
+    cell_state = current_generation[i][j];
+    num_alive_neighbors = get_num_alive_cells_in_neighborhood(n, current_generation, i, j);
+    new_cell_state = state_lookup[cell_state][num_alive_neighbors];
+    next_generation[i][j] = new_cell_state;
+}
+
+void run_update_no_modulo(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n], int i, int j) {
+    int num_alive_neighbors;
+    uint8_t new_cell_state;
+    uint8_t cell_state;
+
+    cell_state = current_generation[i][j];
+    num_alive_neighbors = get_num_alive_cells_in_neighborhood_no_modulo(n, current_generation, i, j);
+    new_cell_state = state_lookup[cell_state][num_alive_neighbors];
+    next_generation[i][j] = new_cell_state;
+}
+
+// runs the gol for one iteration
+void run_generation(int n, uint8_t(*current_generation)[n], uint8_t(*next_generation)[n]) {
+    int i;
+    for (i = 0; i < 2; i++) { // first two rows
         for (int j = 0; j < n; j++) {
-            cell_state = current_generation[i][j];
-            num_alive_neighbors = get_num_alive_cells_in_neighborhood(n, current_generation, i, j);
-            new_cell_state = state_lookup[cell_state][num_alive_neighbors];
-            next_generation[i][j] = new_cell_state;
+            run_update_with_modulo(n, current_generation, next_generation, i, j);
+        }
+    }
+
+    for (; i < n - 2; i++) { // middle part
+        int j = 0;
+        for (; j < 2; j++) {
+            run_update_with_modulo(n, current_generation, next_generation, i, j);
+        }
+        for (; j < (n - 2); j++) {
+            run_update_no_modulo(n, current_generation, next_generation, i, j);
+        }
+        for (; j < n; j++) {
+            run_update_with_modulo(n, current_generation, next_generation, i, j);
+        }
+    }
+
+    for (; i < n; i++) { // last two rows
+        for (int j = 0; j < n; j++) {
+            run_update_with_modulo(n, current_generation, next_generation, i, j);
         }
     }
 }
