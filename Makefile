@@ -16,11 +16,5 @@ par_collective: par_collective.c
 clean_par_collective:
 	rm -f par_collective
 
-mpi_rand: mpi_rand.c
-	mpicc -Wall --std=c99  -o $@ $<
-
-clean_mpi_rand:
-	rm -f mpi_rand
-
 clean:
-	rm -f seq par par_collective mpi_rand
+	rm -f seq par par_collective
