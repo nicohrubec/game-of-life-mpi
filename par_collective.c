@@ -508,13 +508,15 @@ int main(int argc, char *argv[]) {
     );
 
     // communication setup
-    int sendcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
-    int recvcounts_top_bottom[2] = {4 * n_loc_c, 4 * n_loc_c};
-    int sendcounts_left_right[2] = {4 * (n_loc_r + 4), 4 * (n_loc_r + 4)};
-    int recvcounts_left_right[2] = {4 * (n_loc_r + 4), 4 * (n_loc_r + 4)};
+    int sendcounts_top_bottom[2] = {2 * n_loc_c, 2 * n_loc_c};
+    int recvcounts_top_bottom[2] = {2 * n_loc_c, 2 * n_loc_c};
+    int sendcounts_left_right[2] = {2 * (n_loc_r + 4), 2 * (n_loc_r + 4)};
+    int recvcounts_left_right[2] = {2 * (n_loc_r + 4), 2 * (n_loc_r + 4)};
 
-    int sdispls[2] = {0, 0};
-    int rdispls[2] = {0, 0};
+    int sdispls_top_bottom[2] = {0, 2 * n_loc_c};
+    int rdispls_top_bottom[2] = {0, 2 * n_loc_c};
+    int sdispls_left_right[2] = {0, 2 * (n_loc_r + 4)};
+    int rdispls_left_right[2] = {0, 2 * (n_loc_r + 4)};
 
     // communication buffers
     uint8_t *sendbuf_top_bottom = malloc(4 * n_loc_c * sizeof(uint8_t));
@@ -541,14 +543,14 @@ int main(int argc, char *argv[]) {
 
         // first communication round with top and bottom neighbors
         MPI_Neighbor_alltoallv(
-                sendbuf_top_bottom, sendcounts_top_bottom, sdispls, MPI_UINT8_T,
-                recvbuf_top_bottom, recvcounts_top_bottom, rdispls, MPI_UINT8_T,
+                sendbuf_top_bottom, sendcounts_top_bottom, sdispls_top_bottom, MPI_UINT8_T,
+                recvbuf_top_bottom, recvcounts_top_bottom, rdispls_top_bottom, MPI_UINT8_T,
                 dist_graph_top_bottom
         );
 
         // fill intermediate result buffer for next communication step
-        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], &recvbuf_top_bottom[2 * n_loc_c], 2 * n_loc_c * sizeof(uint8_t));
-        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], recvbuf_top_bottom, 2 * n_loc_c * sizeof(uint8_t));
+        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[0][0], recvbuf_top_bottom, 2 * n_loc_c * sizeof(uint8_t));
+        memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2 + n_loc_r][0], &recvbuf_top_bottom[2 * n_loc_c], 2 * n_loc_c * sizeof(uint8_t));
         memcpy(&loc_matrix_and_neighbor_top_bottom_rows[2][0], current_generation_loc, n_loc_c * n_loc_r * sizeof(uint8_t));
 
         // fill buffers for communication with left and right neighbors
@@ -561,17 +563,17 @@ int main(int argc, char *argv[]) {
 
         // second communication round with left and right neighbors
         MPI_Neighbor_alltoallv(
-                sendbuf_left_right, sendcounts_left_right, sdispls, MPI_UINT8_T,
-                recvbuf_left_right, recvcounts_left_right, rdispls, MPI_UINT8_T,
+                sendbuf_left_right, sendcounts_left_right, sdispls_left_right, MPI_UINT8_T,
+                recvbuf_left_right, recvcounts_left_right, rdispls_left_right, MPI_UINT8_T,
                 dist_graph_left_right
         );
 
         // fill final buffer
         for (int r = 0; r < (n_loc_r + 4); r++) { // fill left and right cols
-            full_current_generation_loc[r][0] = recvbuf_left_right[r+2*(n_loc_r+4)];; // copy first column
-            full_current_generation_loc[r][1] = recvbuf_left_right[r+3*(n_loc_r+4)]; // copy second column
-            full_current_generation_loc[r][(n_loc_c + 4 - 2)] = recvbuf_left_right[r]; // copy second to last column
-            full_current_generation_loc[r][(n_loc_c + 4 - 1)] = recvbuf_left_right[r+(n_loc_r+4)]; // copy last column
+            full_current_generation_loc[r][0] = recvbuf_left_right[r]; // copy first column
+            full_current_generation_loc[r][1] = recvbuf_left_right[r+(n_loc_r+4)]; // copy second column
+            full_current_generation_loc[r][(n_loc_c + 4 - 2)] = recvbuf_left_right[r+2*(n_loc_r+4)];; // copy second to last column
+            full_current_generation_loc[r][(n_loc_c + 4 - 1)] = recvbuf_left_right[r+3*(n_loc_r+4)]; // copy last column
         }
         for (int r = 0; r < (n_loc_r + 4); r++) { // fill remaining full local matrix
             for (int c = 0; c < n_loc_c; c++) {
